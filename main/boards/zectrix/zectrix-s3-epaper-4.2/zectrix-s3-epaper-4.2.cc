@@ -18,6 +18,7 @@
 #include "zectrix_nfc.h"
 #include "power_save_timer.h"
 #include "mcp_server.h"
+#include "assets/lang_config.h"
 
 #define TAG "zectrix_s3_epaper_4_2"
 
@@ -147,6 +148,14 @@ private:
                 EnterWifiConfigMode();
                 return;
             }
+            power_save_timer_->WakeUp();
+            auto codec = GetAudioCodec();
+            auto volume = codec->output_volume() + 10;
+            if (volume > 100) {
+                volume = 100;
+            }
+            codec->SetOutputVolume(volume);
+            GetDisplay()->ShowNotification(Lang::Strings::VOLUME + std::to_string(volume / 10));
         });
 
         down_button_.OnClick([this]() {
@@ -155,6 +164,14 @@ private:
                 EnterWifiConfigMode();
                 return;
             }
+            power_save_timer_->WakeUp();
+            auto codec = GetAudioCodec();
+            auto volume = codec->output_volume() - 10;
+            if (volume < 0) {
+                volume = 0;
+            }
+            codec->SetOutputVolume(volume);
+            GetDisplay()->ShowNotification(Lang::Strings::VOLUME + std::to_string(volume / 10));
         });
     }
 
@@ -212,9 +229,21 @@ private:
         power_->VbatPowerOn();
         power_->PowerAudioOn();
         power_->PowerEpdOn();
+        // VBAT 反馈引脚（GPIO18，同时也是下键）配置为输入上拉，避免高阻读到低电平
+        gpio_config_t vbat_gpio = {};
+        vbat_gpio.intr_type = GPIO_INTR_DISABLE;
+        vbat_gpio.mode = GPIO_MODE_INPUT;
+        vbat_gpio.pin_bit_mask = 1ULL << VBAT_PWR_GPIO;
+        vbat_gpio.pull_up_en = GPIO_PULLUP_ENABLE;
+        vbat_gpio.pull_down_en = GPIO_PULLDOWN_DISABLE;
+        gpio_config(&vbat_gpio);
+        int vbat_timeout = 100;
         do {
             vTaskDelay(pdMS_TO_TICKS(10));
-        } while (!gpio_get_level(static_cast<gpio_num_t>(VBAT_PWR_GPIO)));
+        } while (!gpio_get_level(static_cast<gpio_num_t>(VBAT_PWR_GPIO)) && --vbat_timeout > 0);
+        if (vbat_timeout <= 0) {
+            ESP_LOGW(TAG, "VBAT feedback GPIO%d not asserted, continuing anyway", VBAT_PWR_GPIO);
+        }
     }
 
     void InitializeRtc() {
