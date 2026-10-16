@@ -18,6 +18,7 @@
 #include "zectrix_nfc.h"
 #include "power_save_timer.h"
 #include "mcp_server.h"
+#include "assets.h"
 #include "assets/lang_config.h"
 
 #define TAG "zectrix_s3_epaper_4_2"
@@ -201,8 +202,15 @@ private:
         power_save_timer_ = new PowerSaveTimer(-1, 180, 900);
         power_save_timer_->OnEnterSleepMode([this]() {
             ESP_LOGI(TAG, "Entering sleep mode");
-            GetDisplay()->SetEmotion("sleepy");
-            GetDisplay()->SetChatMessage("system", "休眠中");
+            void* ptr = nullptr;
+            size_t size = 0;
+            if (Assets::GetInstance().GetAssetData("sleep.raw", ptr, size) && ptr != nullptr) {
+                display_->WriteRaw1bpp(0, 0, EXAMPLE_LCD_WIDTH, EXAMPLE_LCD_HEIGHT,
+                                       (const uint8_t*)ptr, size);
+            } else {
+                GetDisplay()->SetEmotion("sleepy");
+                GetDisplay()->SetChatMessage("system", "休眠中");
+            }
         });
         power_save_timer_->OnExitSleepMode([this]() {
             ESP_LOGI(TAG, "Exiting sleep mode");

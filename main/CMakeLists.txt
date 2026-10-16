@@ -886,6 +886,7 @@ elseif(CONFIG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2)
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_30_4)
     set(BUILTIN_ICON_FONT font_material_symbols_30_4)
     set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_128)
+    set(DEFAULT_ASSETS_EXTRA_FILES "${CMAKE_CURRENT_SOURCE_DIR}/boards/zectrix/zectrix-s3-epaper-4.2/assets_extra")
 endif()
 
 if(MANUFACTURER)
