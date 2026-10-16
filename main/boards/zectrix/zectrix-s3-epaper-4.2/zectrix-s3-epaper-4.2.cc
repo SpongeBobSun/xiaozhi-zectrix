@@ -135,8 +135,7 @@ private:
         void* ptr = nullptr;
         size_t size = 0;
         if (Assets::GetInstance().GetAssetData("sleep.raw", ptr, size) && ptr != nullptr) {
-            display_->WriteRaw1bpp(0, 0, EXAMPLE_LCD_WIDTH, EXAMPLE_LCD_HEIGHT,
-                                   (const uint8_t*)ptr, size);
+            display_->ShowRawImageSync((const uint8_t*)ptr, size);
         } else {
             GetDisplay()->SetEmotion("sleepy");
             GetDisplay()->SetChatMessage("system", "休眠中");

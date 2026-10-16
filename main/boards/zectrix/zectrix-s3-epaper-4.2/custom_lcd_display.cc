@@ -1034,6 +1034,26 @@ void CustomLcdDisplay::EPD_DrawColorPixel(uint16_t x, uint16_t y, uint8_t color)
     else                             buffer[index] &= (uint8_t)~mask;
 }
 
+void CustomLcdDisplay::ShowRawImageSync(const uint8_t* data, size_t len) {
+    // 把整屏 1bpp 图直接写入显存并同步全刷（关机等关键场合，确保画面落地）
+    if (!data || !buffer) return;
+    const size_t expected = (size_t)((Width + 7) >> 3) * Height;
+    if (len < expected) return;
+
+    if (dirty_mutex) xSemaphoreTake(dirty_mutex, portMAX_DELAY);
+    memcpy(buffer, data, expected);
+    memcpy(tx_buf, buffer, lcd_spi_data.buffer_len);
+    pending = false;
+    dirty = {0, 0, 0, 0};
+    if (dirty_mutex) xSemaphoreGive(dirty_mutex);
+
+    EPD_Init();
+    EPD_Display();
+
+    memcpy(prev_buffer, tx_buf, lcd_spi_data.buffer_len);
+    prev_buffer_synced = true;
+}
+
 void CustomLcdDisplay::WriteRaw1bpp(int x, int y, int w, int h, const uint8_t* data, size_t len) {
     if (!data || !buffer || w <= 0 || h <= 0) return;
 
