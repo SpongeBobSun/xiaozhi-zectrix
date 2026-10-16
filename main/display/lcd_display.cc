@@ -22,13 +22,13 @@
 LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
 LV_FONT_DECLARE(BUILTIN_ICON_FONT);
 LV_FONT_DECLARE(font_material_symbols_30_4);
-LV_FONT_DECLARE(font_noto_emoji_96_1);
+LV_FONT_DECLARE(font_noto_emoji_30_4);
 
 void LcdDisplay::InitializeLcdThemes() {
     auto text_font = std::make_shared<LvglBuiltInFont>(&BUILTIN_TEXT_FONT);
     auto icon_font = std::make_shared<LvglBuiltInFont>(&BUILTIN_ICON_FONT);
     auto large_icon_font = std::make_shared<LvglBuiltInFont>(&font_material_symbols_30_4);
-    auto emoji_font = std::make_shared<LvglBuiltInFont>(&font_noto_emoji_96_1);
+    auto emoji_font = std::make_shared<LvglBuiltInFont>(&font_noto_emoji_30_4);
 
     // light theme
     auto light_theme = new LvglTheme("light");
@@ -853,7 +853,7 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_bg_opa(emoji_box_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_pad_all(emoji_box_, 0, 0);
     lv_obj_set_style_border_width(emoji_box_, 0, 0);
-    lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, -55);
+    lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, 0);
 
     emoji_label_ = lv_label_create(emoji_box_);
     lv_obj_set_style_text_font(emoji_label_, large_icon_font, 0);
@@ -948,7 +948,7 @@ void LcdDisplay::SetupUI() {
     /* Bottom bar - auto height, grows upward with wrapped text */
     bottom_bar_ = lv_obj_create(screen);
     lv_obj_set_width(bottom_bar_, LV_HOR_RES);
-    lv_obj_set_height(bottom_bar_, LV_VER_RES * 46 / 100);
+    lv_obj_set_height(bottom_bar_, LV_SIZE_CONTENT);
     lv_obj_set_style_radius(bottom_bar_, 0, 0);
     lv_obj_set_style_bg_color(bottom_bar_, lvgl_theme->background_color(), 0);
     lv_obj_set_style_bg_opa(bottom_bar_, LV_OPA_50, 0);
@@ -965,7 +965,7 @@ void LcdDisplay::SetupUI() {
     lv_label_set_long_mode(chat_message_label_, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(chat_message_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(chat_message_label_, lvgl_theme->text_color(), 0);
-    lv_obj_align(chat_message_label_, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(chat_message_label_, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);  // Hide until there is content
 #else
     /* Top layer: Bottom bar - fixed height at bottom */
