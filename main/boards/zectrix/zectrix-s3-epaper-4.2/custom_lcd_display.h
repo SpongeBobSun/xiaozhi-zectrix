@@ -57,7 +57,6 @@ public:
     ~CustomLcdDisplay();
 
     void WriteRaw1bpp(int x, int y, int w, int h, const uint8_t* data, size_t len);
-    void ShowRawImageSync(const uint8_t* data, size_t len);
     void DrawTexts(const std::vector<struct TextItem>& texts, bool clear);
 
     void EPD_Init();

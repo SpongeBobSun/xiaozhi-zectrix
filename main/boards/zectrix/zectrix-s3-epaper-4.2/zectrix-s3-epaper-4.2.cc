@@ -135,7 +135,10 @@ private:
         void* ptr = nullptr;
         size_t size = 0;
         if (Assets::GetInstance().GetAssetData("sleep.raw", ptr, size) && ptr != nullptr) {
-            display_->ShowRawImageSync((const uint8_t*)ptr, size);
+            display_->WriteRaw1bpp(0, 0, EXAMPLE_LCD_WIDTH, EXAMPLE_LCD_HEIGHT,
+                                   (const uint8_t*)ptr, size);
+            // 强制 urgent 刷新：绕过节流，确保休眠图一定被刷出来
+            display_->RequestUrgentFullRefresh();
         } else {
             GetDisplay()->SetEmotion("sleepy");
             GetDisplay()->SetChatMessage("system", "休眠中");
