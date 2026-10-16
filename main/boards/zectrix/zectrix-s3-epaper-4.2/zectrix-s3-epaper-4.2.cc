@@ -146,15 +146,17 @@ private:
     void Shutdown() {
         if (powered_off_) return;
         powered_off_ = true;
+        ESP_LOGI(TAG, "Shutdown: showing sleep image");
         ShowSleepImage();
         // 等墨水屏真正刷完再断电（断电后图像保留，看起来就是"关机画面"）
         for (int i = 0; i < 200 && display_->IsRefreshPending(); i++) {
             vTaskDelay(pdMS_TO_TICKS(50));
         }
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(1500));
+        ESP_LOGI(TAG, "Shutdown: cutting power");
         power_->PowerAudioOff();
-        power_->PowerEpdOff();
         power_->VbatPowerOff();
+        // 注意：不调用 PowerEpdOff()，墨水屏断电可能丢失画面
     }
 
     void PowerOn() {
