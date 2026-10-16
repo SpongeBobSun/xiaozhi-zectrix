@@ -131,11 +131,24 @@ private:
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
     }
 
+    void ShowSleepImage() {
+        void* ptr = nullptr;
+        size_t size = 0;
+        if (Assets::GetInstance().GetAssetData("sleep.raw", ptr, size) && ptr != nullptr) {
+            display_->WriteRaw1bpp(0, 0, EXAMPLE_LCD_WIDTH, EXAMPLE_LCD_HEIGHT,
+                                   (const uint8_t*)ptr, size);
+        } else {
+            GetDisplay()->SetEmotion("sleepy");
+            GetDisplay()->SetChatMessage("system", "休眠中");
+        }
+    }
+
     void Shutdown() {
         if (powered_off_) return;
         powered_off_ = true;
-        GetDisplay()->SetChatMessage("system", "OFF");
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        ShowSleepImage();
+        // 等墨水屏把图刷完再断电（断电后图像保留，看起来就是"关机画面"）
+        vTaskDelay(pdMS_TO_TICKS(2500));
         power_->PowerAudioOff();
         power_->PowerEpdOff();
         power_->VbatPowerOff();
@@ -207,15 +220,7 @@ private:
         power_save_timer_ = new PowerSaveTimer(-1, 180, 900);
         power_save_timer_->OnEnterSleepMode([this]() {
             ESP_LOGI(TAG, "Entering sleep mode");
-            void* ptr = nullptr;
-            size_t size = 0;
-            if (Assets::GetInstance().GetAssetData("sleep.raw", ptr, size) && ptr != nullptr) {
-                display_->WriteRaw1bpp(0, 0, EXAMPLE_LCD_WIDTH, EXAMPLE_LCD_HEIGHT,
-                                       (const uint8_t*)ptr, size);
-            } else {
-                GetDisplay()->SetEmotion("sleepy");
-                GetDisplay()->SetChatMessage("system", "休眠中");
-            }
+            ShowSleepImage();
         });
         power_save_timer_->OnExitSleepMode([this]() {
             ESP_LOGI(TAG, "Exiting sleep mode");
