@@ -91,9 +91,14 @@ static void CheckDualButtonForOtaSwitch() {
         }
     }
     
-    // 恢复GPIO为高阻态，让Button类重新配置
-    gpio_reset_pin(TODO_UP_BUTTON_GPIO);
-    gpio_reset_pin(TODO_DOWN_BUTTON_GPIO);
+    // 恢复 GPIO 为输入上拉（Button 类需要，不能用 gpio_reset_pin 打回高阻）
+    gpio_config_t btn_restore = {};
+    btn_restore.intr_type = GPIO_INTR_DISABLE;
+    btn_restore.mode = GPIO_MODE_INPUT;
+    btn_restore.pin_bit_mask = (1ULL << TODO_UP_BUTTON_GPIO) | (1ULL << TODO_DOWN_BUTTON_GPIO);
+    btn_restore.pull_up_en = GPIO_PULLUP_ENABLE;
+    btn_restore.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    gpio_config(&btn_restore);
 }
 
 class CustomBoard : public WifiBoard {
