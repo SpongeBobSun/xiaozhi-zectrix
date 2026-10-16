@@ -403,6 +403,13 @@ public:
     }
 
     virtual bool GetBatteryLevel(int &level, bool &charging, bool &discharging) override {
+        if (powered_off_) {
+            // 已关机：外设断电后电池读数不可靠，报告充电态避免误报"电量低"
+            level = 100;
+            charging = true;
+            discharging = false;
+            return true;
+        }
         ChargeStatusTick();
         auto snap = charge_status_.Get();
         charging = snap.charging;
