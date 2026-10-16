@@ -73,6 +73,7 @@ public:
     void RequestUrgentFullRefresh();
     void SetEmotion(const char* emotion) override;
     void ForceFullRedraw();
+    void SetFrozen(bool frozen) { frozen_ = frozen; }
 
     bool IsRefreshPending();
 
@@ -125,6 +126,7 @@ private:
     void WRITE_VLINE_TO_HLINE();
 
     uint8_t bw_threshold    = 160;
+    volatile bool frozen_ = false;
 
     void start_refresh_task();
     void stop_refresh_task();

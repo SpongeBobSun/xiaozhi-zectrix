@@ -18,6 +18,7 @@
 #include "zectrix_nfc.h"
 #include "power_save_timer.h"
 #include "mcp_server.h"
+#include "device_state.h"
 #include "assets.h"
 #include "assets/lang_config.h"
 
@@ -114,6 +115,7 @@ private:
     std::unique_ptr<ZectrixNfc> nfc_;
     PowerSaveTimer *power_save_timer_ = nullptr;
     bool powered_off_ = false;
+    DeviceState last_state_ = kDeviceStateUnknown;
 
     adc_oneshot_unit_handle_t adc1_handle = nullptr;
     adc_cali_handle_t cali_handle = nullptr;
@@ -134,10 +136,10 @@ private:
     void ShowSleepImage() {
         void* ptr = nullptr;
         size_t size = 0;
+        display_->SetFrozen(true);   // 冻结 LVGL，避免状态栏/表情覆盖休眠图
         if (Assets::GetInstance().GetAssetData("sleep.raw", ptr, size) && ptr != nullptr) {
             display_->WriteRaw1bpp(0, 0, EXAMPLE_LCD_WIDTH, EXAMPLE_LCD_HEIGHT,
                                    (const uint8_t*)ptr, size);
-            // 强制 urgent 刷新：绕过节流，确保休眠图一定被刷出来
             display_->RequestUrgentFullRefresh();
         } else {
             GetDisplay()->SetEmotion("sleepy");
@@ -231,6 +233,7 @@ private:
         });
         power_save_timer_->OnExitSleepMode([this]() {
             ESP_LOGI(TAG, "Exiting sleep mode");
+            display_->SetFrozen(false);   // 解冻 LVGL
             GetDisplay()->SetEmotion("neutral");
             display_->ForceFullRedraw();  // 清除休眠图片
         });
@@ -312,6 +315,14 @@ private:
     }
 
     void ChargeStatusTick() {
+        // 生命周期状态切换（开始/结束对话等）时全刷一次，清除残影（不随情绪频繁刷）
+        auto state = Application::GetInstance().GetDeviceState();
+        if (state != last_state_) {
+            last_state_ = state;
+            if (display_ != nullptr && !powered_off_) {
+                display_->RequestUrgentFullRefresh();
+            }
+        }
         int64_t now_ms = esp_timer_get_time() / 1000;
         charge_status_.Tick(now_ms);
 

@@ -89,6 +89,11 @@ void CustomLcdDisplay::lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, 
     CustomLcdDisplay *driver = (CustomLcdDisplay *)lv_display_get_user_data(disp);
     assert(driver);
 
+    if (driver->frozen_) {   // 冻结时忽略 LVGL 输出（如显示休眠图/关机后）
+        lv_disp_flush_ready(disp);
+        return;
+    }
+
     if (driver->dirty_mutex) {
         xSemaphoreTake(driver->dirty_mutex, portMAX_DELAY);
     }
@@ -323,9 +328,8 @@ void CustomLcdDisplay::ForceFullRedraw() {
 }
 
 void CustomLcdDisplay::SetEmotion(const char* emotion) {
+    // 不做强制全刷：情绪在对话中频繁变化，全刷会导致屏幕频繁闪烁
     LcdDisplay::SetEmotion(emotion);
-    // 生命周期变化（开始/结束对话、睡眠等）时做一次全刷，清除残影
-    RequestUrgentFullRefresh();
 }
 
 void CustomLcdDisplay::RequestUrgentFullRefresh() {
