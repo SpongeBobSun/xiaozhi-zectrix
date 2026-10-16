@@ -764,7 +764,7 @@ void CustomLcdDisplay::EPD_Init() {
 
     EPD_SendCommand(0x00);
     EPD_SendData(0x2F);
-    EPD_SendData(0x2E);
+    EPD_SendData(0x0E);
 
     EPD_SendCommand(0xE9);
     EPD_SendData(0x01);
@@ -947,46 +947,61 @@ void CustomLcdDisplay::EPD_DisplayPart() {
 void CustomLcdDisplay::EPD_DisplayPartRect(int x, int y, int w, int h) {
     if (w <= 0 || h <= 0) return;
 
-    // X 方向对齐到字节边界（EPD 的 X 以字节为单位）
-    int x_start = (x / 8) * 8;
-    int x_end = ((x + w + 7) / 8) * 8 - 1;
-    int y_start = y;
-    int y_end = y + h - 1;
-    if (x_start < 0) x_start = 0;
-    if (y_start < 0) y_start = 0;
-    if (x_end >= Width) x_end = Width - 1;
-    if (y_end >= Height) y_end = Height - 1;
-    if (x_end < x_start || y_end < y_start) return;
+    // 窗口对齐到字节边界（X 以字节为单位）
+    int x0 = (x / 8) * 8;
+    int x1 = ((x + w + 7) / 8) * 8 - 1;
+    int y0 = y;
+    int y1 = y + h - 1;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 >= Width) x1 = Width - 1;
+    if (y1 >= Height) y1 = Height - 1;
+    if (x1 < x0 || y1 < y0) return;
 
     const int bytes_per_row_1bpp = (Width + 7) >> 3;
-    const int w_bytes = (x_end - x_start + 1) / 8;
-    std::vector<uint8_t> line(w_bytes * 2);
+    const int output_stride = ((x1 - x0 + 1) / 8) * 2;
 
     EPD_Init();
-    EPD_SetWindows((uint16_t)x_start, (uint16_t)y_start, (uint16_t)x_end, (uint16_t)y_end);
-    EPD_SetCursor((uint16_t)x_start, (uint16_t)y_start);
+
+    // SSD2683 partial refresh 特有命令（参照官方 zectrix_epd 驱动）
+    EPD_SendCommand(0x50);
+    EPD_SendData(0x77);
+    EPD_SendCommand(0xE0);
+    EPD_SendData(0x00);
+    EPD_SendCommand(0xA5);
+    read_busy();
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    // SetPartialWindow (0x83)
+    EPD_SendCommand(0x83);
+    EPD_SendData((uint8_t)((x0 >> 8) & 0x03));
+    EPD_SendData((uint8_t)x0);
+    EPD_SendData((uint8_t)((x1 >> 8) & 0x03));
+    EPD_SendData((uint8_t)x1);
+    EPD_SendData((uint8_t)((y0 >> 8) & 0x03));
+    EPD_SendData((uint8_t)y0);
+    EPD_SendData((uint8_t)((y1 >> 8) & 0x03));
+    EPD_SendData((uint8_t)y1);
+    EPD_SendData(0x01);
 
     EPD_SendCommand(0x10);
     read_busy();
 
-    for (int yy = y_start; yy <= y_end; yy++) {
-        const uint8_t* prev_row = prev_buffer + yy * bytes_per_row_1bpp + (x_start >> 3);
-        const uint8_t* tx_row = tx_buf + yy * bytes_per_row_1bpp + (x_start >> 3);
-        for (int j = 0; j < w_bytes; j++) {
-            uint8_t b1 = prev_row[j];
-            uint8_t b2 = tx_row[j];
-            uint16_t result = 0;
-            for (int k = 0; k < 8; k++) {
-                const int src_bit = 7 - k;
-                const int dst_bit0 = 2 * src_bit;
-                const int dst_bit1 = 2 * src_bit + 1;
-                result |= ((uint16_t)((b1 >> src_bit) & 1u)) << dst_bit1;
-                result |= ((uint16_t)((b2 >> src_bit) & 1u)) << dst_bit0;
-            }
-            line[2 * j + 0] = (uint8_t)(result >> 8);
-            line[2 * j + 1] = (uint8_t)(result & 0xFF);
+    // 窗口数据：每 4 像素 1 字节，transition = (old<<1)|new
+    std::vector<uint8_t> line(output_stride);
+    for (int yy = y0; yy <= y1; yy++) {
+        std::fill(line.begin(), line.end(), 0);
+        for (int xx = x0; xx <= x1; xx++) {
+            const uint8_t old_pixel =
+                (prev_buffer[yy * bytes_per_row_1bpp + (xx >> 3)] >> (7 - (xx & 7))) & 1;
+            const uint8_t new_pixel =
+                (tx_buf[yy * bytes_per_row_1bpp + (xx >> 3)] >> (7 - (xx & 7))) & 1;
+            const uint8_t transition = (uint8_t)((old_pixel << 1) | new_pixel);
+            const int relative_x = xx - x0;
+            line[relative_x / 4] |=
+                (uint8_t)(transition << (6 - (relative_x & 3) * 2));
         }
-        writeBytes(line.data(), w_bytes * 2);
+        writeBytes(line.data(), output_stride);
     }
 
     EPD_TurnOnDisplayPart();
