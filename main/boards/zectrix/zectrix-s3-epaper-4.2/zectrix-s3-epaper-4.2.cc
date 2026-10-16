@@ -147,8 +147,11 @@ private:
         if (powered_off_) return;
         powered_off_ = true;
         ShowSleepImage();
-        // 等墨水屏把图刷完再断电（断电后图像保留，看起来就是"关机画面"）
-        vTaskDelay(pdMS_TO_TICKS(2500));
+        // 等墨水屏真正刷完再断电（断电后图像保留，看起来就是"关机画面"）
+        for (int i = 0; i < 200 && display_->IsRefreshPending(); i++) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
         power_->PowerAudioOff();
         power_->PowerEpdOff();
         power_->VbatPowerOff();

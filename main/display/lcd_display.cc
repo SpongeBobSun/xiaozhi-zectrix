@@ -948,7 +948,8 @@ void LcdDisplay::SetupUI() {
     /* Bottom bar - auto height, grows upward with wrapped text */
     bottom_bar_ = lv_obj_create(screen);
     lv_obj_set_width(bottom_bar_, LV_HOR_RES);
-    lv_obj_set_height(bottom_bar_, LV_VER_RES * 45 / 100);
+    lv_obj_set_height(bottom_bar_, LV_SIZE_CONTENT);
+    lv_obj_set_style_min_height(bottom_bar_, LV_VER_RES * 45 / 100, 0);
     lv_obj_set_style_radius(bottom_bar_, 0, 0);
     lv_obj_set_style_bg_color(bottom_bar_, lvgl_theme->background_color(), 0);
     lv_obj_set_style_bg_opa(bottom_bar_, LV_OPA_50, 0);
