@@ -66,6 +66,7 @@ public:
     void EPD_DisplayPartBaseImage();
     void EPD_Init_Partial();
     void EPD_DisplayPart();
+    void EPD_DisplayPartRect(int x, int y, int w, int h);
     void EPD_DrawColorPixel(uint16_t x, uint16_t y, uint8_t color);
 
     void RequestUrgentRefresh();

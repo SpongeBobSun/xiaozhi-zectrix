@@ -107,6 +107,7 @@ private:
     std::unique_ptr<RtcPcf8563> rtc_;
     std::unique_ptr<ZectrixNfc> nfc_;
     PowerSaveTimer *power_save_timer_ = nullptr;
+    bool powered_off_ = false;
 
     adc_oneshot_unit_handle_t adc1_handle = nullptr;
     adc_cali_handle_t cali_handle = nullptr;
@@ -124,6 +125,27 @@ private:
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
     }
 
+    void Shutdown() {
+        if (powered_off_) return;
+        powered_off_ = true;
+        GetDisplay()->SetChatMessage("system", "OFF");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        power_->PowerAudioOff();
+        power_->PowerEpdOff();
+        power_->VbatPowerOff();
+    }
+
+    void PowerOn() {
+        if (!powered_off_) return;
+        powered_off_ = false;
+        power_->VbatPowerOn();
+        power_->PowerAudioOn();
+        power_->PowerEpdOn();
+        vTaskDelay(pdMS_TO_TICKS(100));
+        GetDisplay()->SetEmotion("neutral");
+        GetDisplay()->SetChatMessage("system", "已唤醒");
+    }
+
     void InitializeButtons() {
         boot_button_.OnClick([this]() {
             auto &app = Application::GetInstance();
@@ -131,15 +153,15 @@ private:
                 EnterWifiConfigMode();
                 return;
             }
+            if (powered_off_) {
+                PowerOn();
+                return;
+            }
             app.ToggleChatState();
         });
 
         boot_button_.OnLongPress([this]() {
-            GetDisplay()->SetChatMessage("system", "OFF");
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            power_->PowerAudioOff();
-            power_->PowerEpdOff();
-            power_->VbatPowerOff();
+            Shutdown();
         });
 
         up_button_.OnClick([this]() {
@@ -176,19 +198,18 @@ private:
     }
 
     void InitializePowerSaveTimer() {
-        power_save_timer_ = new PowerSaveTimer(-1, 20, 300);
+        power_save_timer_ = new PowerSaveTimer(-1, 180, 900);
         power_save_timer_->OnEnterSleepMode([this]() {
             ESP_LOGI(TAG, "Entering sleep mode");
+            GetDisplay()->SetEmotion("sleepy");
+            GetDisplay()->SetChatMessage("system", "休眠中");
         });
         power_save_timer_->OnExitSleepMode([this]() {
             ESP_LOGI(TAG, "Exiting sleep mode");
+            GetDisplay()->SetEmotion("neutral");
         });
         power_save_timer_->OnShutdownRequest([this]() {
-            GetDisplay()->SetChatMessage("system", "OFF");
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            power_->PowerAudioOff();
-            power_->PowerEpdOff();
-            power_->VbatPowerOff();
+            Shutdown();
         });
         power_save_timer_->SetEnabled(true);
     }

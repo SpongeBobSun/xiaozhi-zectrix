@@ -533,8 +533,7 @@ void CustomLcdDisplay::refresh_task_loop() {
             partial_since_full = 0;
         } else {
             stat_partial++;
-            EPD_Init();
-            EPD_DisplayPart();
+            EPD_DisplayPartRect(r.x, r.y, r.w, r.h);
             memcpy(prev_buffer, tx_buf, lcd_spi_data.buffer_len);
             prev_buffer_synced = true;
             partial_since_full++;
@@ -945,6 +944,54 @@ void CustomLcdDisplay::EPD_DisplayPart() {
     EPD_TurnOnDisplay();
 }
 
+void CustomLcdDisplay::EPD_DisplayPartRect(int x, int y, int w, int h) {
+    if (w <= 0 || h <= 0) return;
+
+    // X 方向对齐到字节边界（EPD 的 X 以字节为单位）
+    int x_start = (x / 8) * 8;
+    int x_end = ((x + w + 7) / 8) * 8 - 1;
+    int y_start = y;
+    int y_end = y + h - 1;
+    if (x_start < 0) x_start = 0;
+    if (y_start < 0) y_start = 0;
+    if (x_end >= Width) x_end = Width - 1;
+    if (y_end >= Height) y_end = Height - 1;
+    if (x_end < x_start || y_end < y_start) return;
+
+    const int bytes_per_row_1bpp = (Width + 7) >> 3;
+    const int w_bytes = (x_end - x_start + 1) / 8;
+    std::vector<uint8_t> line(w_bytes * 2);
+
+    EPD_Init();
+    EPD_SetWindows((uint16_t)x_start, (uint16_t)y_start, (uint16_t)x_end, (uint16_t)y_end);
+    EPD_SetCursor((uint16_t)x_start, (uint16_t)y_start);
+
+    EPD_SendCommand(0x10);
+    read_busy();
+
+    for (int yy = y_start; yy <= y_end; yy++) {
+        const uint8_t* prev_row = prev_buffer + yy * bytes_per_row_1bpp + (x_start >> 3);
+        const uint8_t* tx_row = tx_buf + yy * bytes_per_row_1bpp + (x_start >> 3);
+        for (int j = 0; j < w_bytes; j++) {
+            uint8_t b1 = prev_row[j];
+            uint8_t b2 = tx_row[j];
+            uint16_t result = 0;
+            for (int k = 0; k < 8; k++) {
+                const int src_bit = 7 - k;
+                const int dst_bit0 = 2 * src_bit;
+                const int dst_bit1 = 2 * src_bit + 1;
+                result |= ((uint16_t)((b1 >> src_bit) & 1u)) << dst_bit1;
+                result |= ((uint16_t)((b2 >> src_bit) & 1u)) << dst_bit0;
+            }
+            line[2 * j + 0] = (uint8_t)(result >> 8);
+            line[2 * j + 1] = (uint8_t)(result & 0xFF);
+        }
+        writeBytes(line.data(), w_bytes * 2);
+    }
+
+    EPD_TurnOnDisplayPart();
+}
+
 void CustomLcdDisplay::EPD_DrawColorPixel(uint16_t x, uint16_t y, uint8_t color) {
     if (x >= (uint16_t)Width || y >= (uint16_t)Height) return;
 
@@ -1117,7 +1164,7 @@ void CustomLcdDisplay::EPD_SetWindows(uint16_t Xstart, uint16_t Ystart, uint16_t
 
 void CustomLcdDisplay::EPD_SetCursor(uint16_t Xstart, uint16_t Ystart) {
     EPD_SendCommand(0x4E);
-    EPD_SendData(Xstart & 0xFF);
+    EPD_SendData((Xstart >> 3) & 0xFF);
 
     EPD_SendCommand(0x4F);
     EPD_SendData(Ystart & 0xFF);
