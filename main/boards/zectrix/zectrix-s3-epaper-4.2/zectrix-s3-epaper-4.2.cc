@@ -144,12 +144,12 @@ private:
     void PowerOn() {
         if (!powered_off_) return;
         powered_off_ = false;
+        // 外设断电后需要重新初始化（音频/屏幕），直接重启最干净
         power_->VbatPowerOn();
         power_->PowerAudioOn();
         power_->PowerEpdOn();
         vTaskDelay(pdMS_TO_TICKS(100));
-        GetDisplay()->SetEmotion("neutral");
-        GetDisplay()->SetChatMessage("system", "已唤醒");
+        esp_restart();
     }
 
     void InitializeButtons() {
@@ -220,6 +220,7 @@ private:
         power_save_timer_->OnExitSleepMode([this]() {
             ESP_LOGI(TAG, "Exiting sleep mode");
             GetDisplay()->SetEmotion("neutral");
+            display_->ForceFullRedraw();  // 清除休眠图片
         });
         power_save_timer_->OnShutdownRequest([this]() {
             Shutdown();

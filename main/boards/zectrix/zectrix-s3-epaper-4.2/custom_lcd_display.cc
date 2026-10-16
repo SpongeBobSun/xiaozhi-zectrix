@@ -180,7 +180,7 @@ CustomLcdDisplay::CustomLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_p
     assert(buffer_1);
     lv_display_set_buffers(display_, buffer_1, NULL, BUFF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-    bw_threshold       = 200;
+    bw_threshold       = 160;
 
     sample_interval_ms = 300;
     last_sample_tick = 0;
@@ -313,6 +313,21 @@ void CustomLcdDisplay::RequestUrgentRefresh() {
     }
 }
 
+void CustomLcdDisplay::ForceFullRedraw() {
+    // 强制 LVGL 全屏重绘，覆盖之前直接写入显存的画面（如休眠图片）
+    if (Lock(2000)) {
+        lv_obj_invalidate(lv_screen_active());
+        Unlock();
+    }
+    RequestUrgentFullRefresh();
+}
+
+void CustomLcdDisplay::SetEmotion(const char* emotion) {
+    LcdDisplay::SetEmotion(emotion);
+    // 生命周期变化（开始/结束对话、睡眠等）时做一次全刷，清除残影
+    RequestUrgentFullRefresh();
+}
+
 void CustomLcdDisplay::RequestUrgentFullRefresh() {
     if (dirty_mutex) {
         xSemaphoreTake(dirty_mutex, portMAX_DELAY);
@@ -376,7 +391,7 @@ void CustomLcdDisplay::refresh_task_loop() {
     const TickType_t kDebounceTicks = pdMS_TO_TICKS(50);
     const TickType_t kUrgentDebounceTicks = pdMS_TO_TICKS(30);
     const float kMinDiffBitRatio = 0.001f;
-    const float kForceFullDiffRatio = 0.30f;
+    const float kForceFullDiffRatio = 0.15f;
     const int kTinyMaxStreak = 4;
     const size_t kTinyMaxAccumBits = 64 * 8;
     const TickType_t kTinyMaxHoldTicks = pdMS_TO_TICKS(1200);
