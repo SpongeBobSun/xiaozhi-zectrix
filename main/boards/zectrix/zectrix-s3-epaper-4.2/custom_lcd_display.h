@@ -72,6 +72,8 @@ public:
     void RequestUrgentRefresh();
     void RequestUrgentFullRefresh();
     void SetEmotion(const char* emotion) override;
+    // 拒绝 assets 分区下发的字体，始终使用编译进固件的 1bpp 字体
+    bool SetTextFont(std::shared_ptr<LvglFont> text_font) override;
     void SetupUI() override;
     void ForceFullRedraw();
     void SetFrozen(bool frozen) { frozen_ = frozen; }

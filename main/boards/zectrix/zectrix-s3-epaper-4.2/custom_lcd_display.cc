@@ -347,6 +347,15 @@ int CustomLcdDisplay::RefreshRatePartialsBeforeFull(RefreshRate rate) {
     }
 }
 
+// 字体保护：本板的中文字体是专门为 1bpp 墨水屏生成、并编译进固件的。
+// assets 分区里的字体（例如 xiaozhi.me 下发的 assets.bin）通常是 4bpp 抗锯齿版本，
+// 在 1bpp 面板上会发糊；字符集不同还会缺字。所以一律拒绝来自 assets 的字体。
+bool CustomLcdDisplay::SetTextFont(std::shared_ptr<LvglFont> text_font) {
+    (void)text_font;
+    ESP_LOGW(TAG, "ignore text font from assets partition; keep the built-in 1bpp font");
+    return false;
+}
+
 void CustomLcdDisplay::SetRefreshRate(RefreshRate rate) {
     sample_interval_ms = RefreshRateIntervalMs(rate);
     partial_before_full_ = RefreshRatePartialsBeforeFull(rate);
