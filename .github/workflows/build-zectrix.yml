@@ -1,0 +1,80 @@
+name: Build Zectrix Board
+
+# 只编译 zectrix-s3-epaper-4.2 板卡，用于这个 fork 的日常构建与发布。
+# 上游的 build.yml 只在 main / ci/* 触发并编译全部板卡，这里单独一条线更省时间。
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - zectrix
+    tags:
+      - 'zectrix-v*'
+  pull_request:
+    branches:
+      - zectrix
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build zectrix-s3-epaper-4.2
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v6.0.2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build firmware
+        shell: bash
+        run: |
+          set -e
+          . "$IDF_PATH/export.sh"
+          idf.py set-target esp32s3
+          # 选择 zectrix 板卡（与 config.json 的 sdkconfig_append 保持一致）
+          printf '\nCONFIG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2=y\nCONFIG_USE_WECHAT_MESSAGE_STYLE=n\nCONFIG_USE_MULTILINE_CHAT_MESSAGE=y\n' >> sdkconfig
+          idf.py build
+          idf.py merge-bin
+
+      - name: Report sizes
+        shell: bash
+        run: |
+          ls -l build/merged-binary.bin build/xiaozhi.bin build/generated_assets.bin
+          sha256sum build/merged-binary.bin
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zectrix-note4-firmware
+          path: |
+            build/merged-binary.bin
+            build/xiaozhi.bin
+            build/generated_assets.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+          retention-days: 30
+
+      - name: Attach firmware to release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/zectrix-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/merged-binary.bin
+            build/xiaozhi.bin
+            build/generated_assets.bin
+          body: |
+            Zectrix NOTE4 (ESP32-S3 N16R8, 400x300 SSD2683 黑白墨水屏) 小智固件。
+
+            **整片刷写**（会清 NVS，需重新配网）：
+            ```
+            esptool.py --chip esp32s3 --port COMx write_flash 0x0 merged-binary.bin
+            ```
+
+            **增量更新**（保留配网）：
+            ```
+            esptool.py --chip esp32s3 --port COMx write_flash 0x20000 xiaozhi.bin 0x800000 generated_assets.bin
+            ```
+
+            注：本 CI 产物不含自定义休眠图（该图片未纳入仓库），睡眠/关机画面会回退成表情。
