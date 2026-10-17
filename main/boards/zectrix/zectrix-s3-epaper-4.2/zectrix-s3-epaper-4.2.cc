@@ -237,7 +237,8 @@ private:
     }
 
     void InitializePowerSaveTimer() {
-        power_save_timer_ = new PowerSaveTimer(-1, 180, 900);
+        // 参数: (cpu_max_freq, 休眠秒数, 关机秒数) = 10 分钟休眠 / 30 分钟关机
+        power_save_timer_ = new PowerSaveTimer(-1, 600, 1800);
         power_save_timer_->OnEnterSleepMode([this]() {
             if (powered_off_) return;   // 已关机，无需再处理
             ESP_LOGI(TAG, "Entering sleep mode");
