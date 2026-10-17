@@ -75,6 +75,8 @@ public:
     void SetupUI() override;
     void ForceFullRedraw();
     void SetFrozen(bool frozen) { frozen_ = frozen; }
+    // 刷新采样间隔(ms)：两次刷新之间的最小间隔，越小越实时、越费电
+    void SetSampleIntervalMs(int ms);
 
     bool IsRefreshPending();
 

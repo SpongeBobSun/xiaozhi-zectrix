@@ -261,6 +261,26 @@ private:
             EnterWifiConfigMode();
             return true;
         });
+
+        // 调整墨水屏刷新间隔（毫秒）。值越小越实时但更费电、更容易闪；越大越省电但更新更慢。
+        mcp_server.AddTool("self.disp.refresh_interval",
+                           "Set the e-paper refresh interval in milliseconds (100-3000). "
+                           "Smaller = more responsive but more flashing/power; larger = calmer but slower. "
+                           "Typical values: 200 (responsive), 300 (default), 800 (calm).",
+                           PropertyList({Property("interval_ms", kPropertyTypeInteger, 300, 100, 3000)}),
+                           [this](const PropertyList &properties) -> ReturnValue {
+                               display_->SetSampleIntervalMs(properties["interval_ms"].value<int>());
+                               return true;
+                           });
+
+        // 立即做一次全屏刷新（清残影）
+        mcp_server.AddTool("self.disp.refresh_now",
+                           "Force a full-screen refresh now. Use it when the screen shows ghosting "
+                           "or leftover content.",
+                           PropertyList(), [this](const PropertyList &) -> ReturnValue {
+                               display_->RequestUrgentFullRefresh();
+                               return true;
+                           });
     }
 
     void InitializeLcdDisplay() {
