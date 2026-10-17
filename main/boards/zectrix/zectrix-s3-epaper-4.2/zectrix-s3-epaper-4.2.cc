@@ -262,15 +262,54 @@ private:
             return true;
         });
 
-        // 调整墨水屏刷新间隔（毫秒）。值越小越实时但更费电、更容易闪；越大越省电但更新更慢。
-        mcp_server.AddTool("self.disp.refresh_interval",
-                           "Set the e-paper refresh interval in milliseconds (100-3000). "
-                           "Smaller = more responsive but more flashing/power; larger = calmer but slower. "
-                           "Typical values: 200 (responsive), 300 (default), 800 (calm).",
-                           PropertyList({Property("interval_ms", kPropertyTypeInteger, 300, 100, 3000)}),
+        // 刷新档位：只控制"刷新节流间隔"和"全刷周期"；局部刷/全刷仍由内容差异决定
+        mcp_server.AddTool("self.disp.set_refresh_rate",
+                           "Set how eagerly the e-paper refreshes. Allowed values: "
+                           "\"slow\", \"medium\" (default), \"fast\". "
+                           "Each level is a fixed pair: the minimum interval between two refreshes, "
+                           "and how many partial refreshes are allowed before a forced full refresh. "
+                           "slow = 1000 ms interval + full refresh every 30 partials (calmest, least "
+                           "flashing, display a bit stale); "
+                           "medium = 300 ms + every 10 partials; "
+                           "fast = 100 ms + every 5 partials (most responsive, more flashing). "
+                           "This throttles both partial and full refreshes; whether a given update is "
+                           "partial or full is still decided by how much of the content changed.",
+                           PropertyList({Property("rate", kPropertyTypeString, std::string("medium"))}),
                            [this](const PropertyList &properties) -> ReturnValue {
-                               display_->SetSampleIntervalMs(properties["interval_ms"].value<int>());
-                               return true;
+                               const std::string rate = properties["rate"].value<std::string>();
+                               CustomLcdDisplay::RefreshRate target;
+                               if (rate == "slow") {
+                                   target = CustomLcdDisplay::RefreshRate::kSlow;
+                               } else if (rate == "fast") {
+                                   target = CustomLcdDisplay::RefreshRate::kFast;
+                               } else if (rate == "medium") {
+                                   target = CustomLcdDisplay::RefreshRate::kMedium;
+                               } else {
+                                   return std::string("unknown rate '") + rate +
+                                          "', expected slow|medium|fast";
+                               }
+                               display_->SetRefreshRate(target);
+                               return std::string("refresh rate set to ") +
+                                      CustomLcdDisplay::RefreshRateName(target) + " (interval " +
+                                      std::to_string(CustomLcdDisplay::RefreshRateIntervalMs(target)) +
+                                      " ms, full refresh every " +
+                                      std::to_string(
+                                          CustomLcdDisplay::RefreshRatePartialsBeforeFull(target)) +
+                                      " partial refreshes)";
+                           });
+
+        mcp_server.AddTool("self.disp.get_refresh_rate",
+                           "Get the current e-paper refresh rate: level, minimum interval between "
+                           "two refreshes, and how often a full refresh is forced.",
+                           PropertyList(), [this](const PropertyList &) -> ReturnValue {
+                               const auto rate = display_->GetRefreshRate();
+                               return std::string("refresh rate is ") +
+                                      CustomLcdDisplay::RefreshRateName(rate) + " (interval " +
+                                      std::to_string(CustomLcdDisplay::RefreshRateIntervalMs(rate)) +
+                                      " ms, full refresh every " +
+                                      std::to_string(
+                                          CustomLcdDisplay::RefreshRatePartialsBeforeFull(rate)) +
+                                      " partial refreshes)";
                            });
 
         // 立即做一次全屏刷新（清残影）

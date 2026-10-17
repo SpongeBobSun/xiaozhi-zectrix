@@ -75,8 +75,23 @@ public:
     void SetupUI() override;
     void ForceFullRedraw();
     void SetFrozen(bool frozen) { frozen_ = frozen; }
-    // 刷新采样间隔(ms)：两次刷新之间的最小间隔，越小越实时、越费电
-    void SetSampleIntervalMs(int ms);
+
+    // 刷新档位（语义化）。每个档位映射到两组写死的参数：
+    //   1) minimum interval between two refreshes (throttles every refresh,
+    //      partial or full);
+    //   2) how many partial refreshes are allowed before a forced full refresh
+    //      (full refreshes are what visibly flashes, so a calmer level also
+    //      forces them less often).
+    enum class RefreshRate {
+        kSlow,    // 1000 ms interval, full refresh every 30 partials
+        kMedium,  // 300 ms, every 10 partials (default)
+        kFast,    // 100 ms, every 5 partials
+    };
+    void SetRefreshRate(RefreshRate rate);
+    RefreshRate GetRefreshRate() const { return refresh_rate_; }
+    static const char* RefreshRateName(RefreshRate rate);
+    static int RefreshRateIntervalMs(RefreshRate rate);
+    static int RefreshRatePartialsBeforeFull(RefreshRate rate);
 
     bool IsRefreshPending();
 
@@ -146,6 +161,8 @@ private:
     bool force_full_refresh_ = false;
     TickType_t last_sample_tick = 0;
     int sample_interval_ms = 300;
+    RefreshRate refresh_rate_ = RefreshRate::kMedium;
+    int partial_before_full_ = 10;
 
     bool prev_buffer_synced = false;
     bool refresh_in_progress = false;

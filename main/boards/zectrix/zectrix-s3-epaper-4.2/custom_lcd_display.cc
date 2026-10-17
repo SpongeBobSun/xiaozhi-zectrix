@@ -318,12 +318,41 @@ void CustomLcdDisplay::RequestUrgentRefresh() {
     }
 }
 
-void CustomLcdDisplay::SetSampleIntervalMs(int ms) {
-    // 允许范围 100~3000ms；太小会让墨水屏过于频繁刷新（闪 + 费电）
-    if (ms < 100) ms = 100;
-    if (ms > 3000) ms = 3000;
-    sample_interval_ms = ms;
-    ESP_LOGI(TAG, "refresh interval set to %d ms", ms);
+const char* CustomLcdDisplay::RefreshRateName(RefreshRate rate) {
+    switch (rate) {
+        case RefreshRate::kSlow: return "slow";
+        case RefreshRate::kFast: return "fast";
+        case RefreshRate::kMedium:
+        default: return "medium";
+    }
+}
+
+int CustomLcdDisplay::RefreshRateIntervalMs(RefreshRate rate) {
+    // 两次刷新之间的最小间隔（节流），对局部刷和全刷同样生效
+    switch (rate) {
+        case RefreshRate::kSlow: return 1000;
+        case RefreshRate::kFast: return 100;
+        case RefreshRate::kMedium:
+        default: return 300;
+    }
+}
+
+int CustomLcdDisplay::RefreshRatePartialsBeforeFull(RefreshRate rate) {
+    // 允许连续多少次局部刷之后强制全刷一次（清残影）
+    switch (rate) {
+        case RefreshRate::kSlow: return 30;
+        case RefreshRate::kFast: return 5;
+        case RefreshRate::kMedium:
+        default: return 10;
+    }
+}
+
+void CustomLcdDisplay::SetRefreshRate(RefreshRate rate) {
+    sample_interval_ms = RefreshRateIntervalMs(rate);
+    partial_before_full_ = RefreshRatePartialsBeforeFull(rate);
+    refresh_rate_ = rate;
+    ESP_LOGI(TAG, "refresh rate = %s (interval %d ms, full refresh every %d partials)",
+             RefreshRateName(rate), sample_interval_ms, partial_before_full_);
 }
 
 void CustomLcdDisplay::ForceFullRedraw() {
@@ -582,7 +611,7 @@ void CustomLcdDisplay::refresh_task_loop() {
         if (!should_full && result.diff_ratio >= kForceFullDiffRatio) {
             should_full = true;
         }
-        if (!should_full && partial_since_full >= 10) {
+        if (!should_full && partial_since_full >= partial_before_full_) {
             should_full = true;
         }
 
