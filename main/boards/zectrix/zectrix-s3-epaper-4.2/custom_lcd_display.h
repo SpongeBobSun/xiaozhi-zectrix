@@ -72,6 +72,7 @@ public:
     void RequestUrgentRefresh();
     void RequestUrgentFullRefresh();
     void SetEmotion(const char* emotion) override;
+    void SetupUI() override;
     void ForceFullRedraw();
     void SetFrozen(bool frozen) { frozen_ = frozen; }
 

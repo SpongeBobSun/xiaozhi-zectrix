@@ -16,6 +16,7 @@
 #include "sleep_manager.h"
 
 LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
+LV_FONT_DECLARE(font_noto_emoji_96_1);
 LV_FONT_DECLARE(font_puhui_basic_30_4);
 
 #define TAG "CustomLcdDisplay"
@@ -330,6 +331,31 @@ void CustomLcdDisplay::ForceFullRedraw() {
 void CustomLcdDisplay::SetEmotion(const char* emotion) {
     // 不做强制全刷：情绪在对话中频繁变化，全刷会导致屏幕频繁闪烁
     LcdDisplay::SetEmotion(emotion);
+    // 基类用组件的 30px 4bpp 抗锯齿 emoji，墨水屏上是灰糊的；这里换成本板卡的
+    // 96px 1bpp 线条 emoji（纯黑白、大而完整）。仅影响 zectrix 板卡。
+    if (emoji_label_ != nullptr && Lock(500)) {
+        lv_obj_set_style_text_font(emoji_label_, &font_noto_emoji_96_1, 0);
+        Unlock();
+    }
+}
+
+void CustomLcdDisplay::SetupUI() {
+    // 先让基类按标准布局创建 UI，再做本板卡的版面微调（只影响 400x300 墨水屏）
+    LcdDisplay::SetupUI();
+    if (!Lock(2000)) {
+        return;
+    }
+    if (emoji_box_ != nullptr) {
+        lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, -70);   // 表情上移，给文字让空间
+    }
+    if (bottom_bar_ != nullptr) {
+        // 文字区至少占下半屏 45%，单行时上对齐、长文本继续向下/向上扩展而不被裁切
+        lv_obj_set_style_min_height(bottom_bar_, LV_VER_RES * 45 / 100, 0);
+    }
+    if (chat_message_label_ != nullptr) {
+        lv_obj_align(chat_message_label_, LV_ALIGN_TOP_MID, 0, 0);
+    }
+    Unlock();
 }
 
 void CustomLcdDisplay::RequestUrgentFullRefresh() {
