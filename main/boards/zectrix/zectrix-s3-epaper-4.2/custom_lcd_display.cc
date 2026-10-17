@@ -318,6 +318,14 @@ void CustomLcdDisplay::RequestUrgentRefresh() {
     }
 }
 
+void CustomLcdDisplay::SetSampleIntervalMs(int ms) {
+    // 允许范围 100~3000ms；太小会让墨水屏过于频繁刷新（闪 + 费电）
+    if (ms < 100) ms = 100;
+    if (ms > 3000) ms = 3000;
+    sample_interval_ms = ms;
+    ESP_LOGI(TAG, "refresh interval set to %d ms", ms);
+}
+
 void CustomLcdDisplay::ForceFullRedraw() {
     // 强制 LVGL 全屏重绘，覆盖之前直接写入显存的画面（如休眠图片）
     if (Lock(2000)) {
