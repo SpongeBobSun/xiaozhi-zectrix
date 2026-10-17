@@ -18,7 +18,6 @@
 #include "zectrix_nfc.h"
 #include "power_save_timer.h"
 #include "mcp_server.h"
-#include "device_state.h"
 #include "assets.h"
 #include "assets/lang_config.h"
 
@@ -115,7 +114,6 @@ private:
     std::unique_ptr<ZectrixNfc> nfc_;
     PowerSaveTimer *power_save_timer_ = nullptr;
     bool powered_off_ = false;
-    DeviceState last_state_ = kDeviceStateUnknown;
 
     adc_oneshot_unit_handle_t adc1_handle = nullptr;
     adc_cali_handle_t cali_handle = nullptr;
@@ -329,14 +327,9 @@ private:
     }
 
     void ChargeStatusTick() {
-        // 生命周期状态切换（开始/结束对话等）时全刷一次，清除残影（不随情绪频繁刷）
-        auto state = Application::GetInstance().GetDeviceState();
-        if (state != last_state_) {
-            last_state_ = state;
-            if (display_ != nullptr && !powered_off_) {
-                display_->RequestUrgentFullRefresh();
-            }
-        }
+        // 注意：不要在这里根据 DeviceState 变化强制全刷。状态栏文字（说话中/聆听中、
+        // 时间、电量、网络）本来就只是局部变化，强制全刷会让每次状态切换都闪一次。
+        // 残影由 refresh 任务的「每 N 次局部刷强制全刷一次」兜底。
         int64_t now_ms = esp_timer_get_time() / 1000;
         charge_status_.Tick(now_ms);
 
