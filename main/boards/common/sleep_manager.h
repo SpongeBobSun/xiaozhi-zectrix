@@ -21,4 +21,4 @@ inline void sm_set_busy(SleepBusySrc src, bool busy) {
     (void)busy;
 }
 
-#endif // SLEEP_MANAGER_H
+#endif  // SLEEP_MANAGER_H

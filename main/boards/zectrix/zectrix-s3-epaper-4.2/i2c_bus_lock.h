@@ -33,4 +33,4 @@ private:
     esp_err_t status_ = ESP_OK;
 };
 
-#endif // I2C_BUS_LOCK_H
+#endif  // I2C_BUS_LOCK_H
