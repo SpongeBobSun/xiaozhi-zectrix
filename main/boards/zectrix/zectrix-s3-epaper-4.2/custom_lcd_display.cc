@@ -454,6 +454,17 @@ void CustomLcdDisplay::refresh_task_loop() {
             if (elapsed < min_ticks) {
                 stat_skip_throttle++;
                 maybe_log_stats(now);
+                // 关键：本次更新已经被从 dirty 取出，必须放回去延后刷新。
+                // 直接丢弃会导致这段内容永远不显示（例如整句对话消息丢失）。
+                xSemaphoreTake(dirty_mutex, portMAX_DELAY);
+                if (rect_area(r) > 0) {
+                    dirty = rect_union(r, dirty);
+                    pending = true;
+                }
+                refresh_in_progress = false;
+                UpdateDisplayBusyLocked();
+                (void)CheckRefreshIdleLocked();
+                xSemaphoreGive(dirty_mutex);
                 TickType_t wait_ticks = min_ticks - elapsed;
                 vTaskDelay(wait_ticks > 0 ? wait_ticks : 1);
                 continue;
@@ -513,6 +524,15 @@ void CustomLcdDisplay::refresh_task_loop() {
             if (!force_due) {
                 stat_skip_tiny++;
                 maybe_log_stats(last_sample_tick);
+                // 同样放回，避免小改动被永久丢弃
+                xSemaphoreTake(dirty_mutex, portMAX_DELAY);
+                if (rect_area(r) > 0) {
+                    dirty = rect_union(r, dirty);
+                    pending = true;
+                }
+                refresh_in_progress = false;
+                UpdateDisplayBusyLocked();
+                xSemaphoreGive(dirty_mutex);
                 vTaskDelay(1);
                 continue;
             }
