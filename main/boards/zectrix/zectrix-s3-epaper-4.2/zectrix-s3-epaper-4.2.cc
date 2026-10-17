@@ -5,6 +5,8 @@
 #include <esp_timer.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
+#include <esp_sleep.h>
+#include <driver/rtc_io.h>
 
 #include "application.h"
 #include "button.h"
@@ -145,6 +147,35 @@ private:
         }
     }
 
+    // 关机：关掉耗电外设后进入 deep sleep，圆键(GPIO0)按下唤醒。
+    // 注意不能再用 VbatPowerOff()：VBAT 是主控自己的电池供电开关，
+    // 拔掉 USB 后切断 VBAT 会让整机掉电，圆键再也无法开机。
+    void EnterDeepSleep() {
+        power_->PowerAudioOff();
+        // deep sleep 期间保持 VBAT / 墨水屏电源 / EPD 复位脚：
+        //  - VBAT 掉电 → 主控断电，圆键无法唤醒
+        //  - EPD 掉电或复位 → 休眠画面消失
+        rtc_gpio_init(VBAT_PWR_PIN);
+        rtc_gpio_set_direction(VBAT_PWR_PIN, RTC_GPIO_MODE_OUTPUT_ONLY);
+        rtc_gpio_set_level(VBAT_PWR_PIN, 1);
+        rtc_gpio_hold_en(VBAT_PWR_PIN);
+
+        rtc_gpio_init(EPD_PWR_PIN);
+        rtc_gpio_set_direction(EPD_PWR_PIN, RTC_GPIO_MODE_OUTPUT_ONLY);
+        rtc_gpio_set_level(EPD_PWR_PIN, 1);
+        rtc_gpio_hold_en(EPD_PWR_PIN);
+
+        rtc_gpio_init(EPD_RST_PIN);
+        rtc_gpio_set_direction(EPD_RST_PIN, RTC_GPIO_MODE_OUTPUT_ONLY);
+        rtc_gpio_set_level(EPD_RST_PIN, 1);
+        rtc_gpio_hold_en(EPD_RST_PIN);
+
+        // 圆键(GPIO0)按下为低电平，唤醒设备（唤醒即复位重启）
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+        ESP_LOGI(TAG, "Shutdown: entering deep sleep (wake on BOOT button)");
+        esp_deep_sleep_start();
+    }
+
     // 关机流程放到独立任务执行：按钮/PowerSaveTimer 的回调都在 esp_timer 任务里，
     // 在里面 vTaskDelay 会阻塞所有 esp_timer 回调（含省电定时器自身）。
     static void ShutdownTask(void* arg) {
@@ -153,11 +184,7 @@ private:
             vTaskDelay(pdMS_TO_TICKS(50));
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
-        ESP_LOGI(TAG, "Shutdown: cutting power");
-        self->power_->PowerAudioOff();
-        self->power_->VbatPowerOff();
-        // 注意：不调用 PowerEpdOff()，墨水屏断电可能丢失画面
-        vTaskDelete(nullptr);
+        self->EnterDeepSleep();
     }
 
     void Shutdown() {
@@ -166,9 +193,8 @@ private:
         ESP_LOGI(TAG, "Shutdown: showing sleep image");
         ShowSleepImage();
         if (xTaskCreate(ShutdownTask, "shutdown", 3072, this, 5, nullptr) != pdPASS) {
-            ESP_LOGE(TAG, "Shutdown: failed to create task, cutting power directly");
-            power_->PowerAudioOff();
-            power_->VbatPowerOff();
+            ESP_LOGE(TAG, "Shutdown: failed to create task, entering deep sleep directly");
+            EnterDeepSleep();
         }
     }
 
@@ -454,6 +480,12 @@ public:
         : boot_button_(BOOT_BUTTON_GPIO),
           up_button_(TODO_UP_BUTTON_GPIO),
           down_button_(TODO_DOWN_BUTTON_GPIO) {
+        // deep sleep 唤醒后电源 GPIO 可能仍处于 hold 状态，先解除以便重新配置
+        gpio_hold_dis(EPD_PWR_PIN);
+        gpio_hold_dis(EPD_RST_PIN);
+        gpio_hold_dis(VBAT_PWR_PIN);
+        gpio_hold_dis(Audio_PWR_PIN);
+        gpio_hold_dis(Audio_AMP_PIN);
         // 在最早期检测双按钮切换OTA分区
         CheckDualButtonForOtaSwitch();
         
