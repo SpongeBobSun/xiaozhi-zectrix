@@ -3,7 +3,21 @@
 
 #include <cstdint>
 
-// 睡眠源标记（用于精细防休眠，当前为桩实现，实际休眠由 PowerSaveTimer 控制）
+// ---------------------------------------------------------------------------
+// TEMPORARY STUB -- NOT A REAL IMPLEMENTATION
+//
+// The zectrix board code (custom_lcd_display.cc) calls sm_kick()/sm_set_busy()
+// to delay system sleep while the e-paper panel is refreshing. Those helpers
+// are not part of this repository upstream, so they are stubbed here as no-ops
+// to keep the board buildable.
+//
+// Consequence: a display refresh will NOT postpone entering sleep mode. That is
+// acceptable today because sleep only happens after 10 minutes of inactivity,
+// long after any refresh completes, but it is not the intended behaviour.
+//
+// Please replace this file with the real sleep-manager implementation (or drop
+// the sm_*() calls in custom_lcd_display.cc) before merging upstream.
+// ---------------------------------------------------------------------------
 enum class SleepBusySrc {
     Display,
     Audio,
