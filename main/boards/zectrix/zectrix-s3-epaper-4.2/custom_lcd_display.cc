@@ -687,8 +687,16 @@ void CustomLcdDisplay::spi_port_rx_init() {
 
 void CustomLcdDisplay::read_busy() {
     int busy = lcd_spi_data.busy;
+    // 必须带超时：EPD 断电或 SPI 异常时 busy 可能长期为低，死等会永久卡死刷新任务
+    constexpr int kMaxWaitMs = 5000;
+    int waited_ms = 0;
     while (gpio_get_level((gpio_num_t)busy) == 0) {
+        if (waited_ms >= kMaxWaitMs) {
+            ESP_LOGW(TAG, "EPD busy timeout after %d ms", kMaxWaitMs);
+            return;
+        }
         vTaskDelay(pdMS_TO_TICKS(5));
+        waited_ms += 5;
     }
 }
 
@@ -834,7 +842,7 @@ void CustomLcdDisplay::EPD_Display() {
     const int bytes_per_row_1bpp = (Width + 7) >> 3;
     const int bytes_per_row_out  = bytes_per_row_1bpp * 2;
 
-    std::vector<uint8_t> line(bytes_per_row_out);
+    uint8_t line[128] = {};  // 每行最大 (400/8)*2 = 100 字节，固定缓冲避免频繁堆分配
 
     EPD_SendCommand(0x40);
     read_busy();
@@ -867,7 +875,7 @@ void CustomLcdDisplay::EPD_Display() {
 
     for (int y = 0; y < Height; y++) {
         const uint8_t* src = tx_buf + y * bytes_per_row_1bpp;
-        uint8_t* dst = line.data();
+        uint8_t* dst = line;
 
         for (int xb = 0; xb < bytes_per_row_1bpp; ++xb) {
             uint8_t o0, o1;
@@ -876,7 +884,7 @@ void CustomLcdDisplay::EPD_Display() {
             *dst++ = o1;
         }
 
-        writeBytes(line.data(), bytes_per_row_out);
+        writeBytes(line, bytes_per_row_out);
     }
 
     EPD_TurnOnDisplay();
@@ -950,7 +958,7 @@ void CustomLcdDisplay::EPD_DisplayPart() {
     const int bytes_per_row_1bpp = (Width + 7) >> 3;
     const int bytes_per_row_out  = bytes_per_row_1bpp * 2;
 
-    std::vector<uint8_t> line(bytes_per_row_out);
+    uint8_t line[128] = {};  // 每行最大 (400/8)*2 = 100 字节，固定缓冲避免频繁堆分配
 
     EPD_SendCommand(0x10);
     read_busy();
@@ -977,7 +985,7 @@ void CustomLcdDisplay::EPD_DisplayPart() {
             line[2 * j + 1] = (uint8_t)(result & 0xFF);
         }
 
-        writeBytes(line.data(), bytes_per_row_out);
+        writeBytes(line, bytes_per_row_out);
     }
 
     EPD_TurnOnDisplay();
@@ -1027,9 +1035,9 @@ void CustomLcdDisplay::EPD_DisplayPartRect(int x, int y, int w, int h) {
     read_busy();
 
     // 窗口数据：每 4 像素 1 字节，transition = (old<<1)|new
-    std::vector<uint8_t> line(output_stride);
+    uint8_t line[128] = {};
     for (int yy = y0; yy <= y1; yy++) {
-        std::fill(line.begin(), line.end(), 0);
+        memset(line, 0, output_stride);
         for (int xx = x0; xx <= x1; xx++) {
             const uint8_t old_pixel =
                 (prev_buffer[yy * bytes_per_row_1bpp + (xx >> 3)] >> (7 - (xx & 7))) & 1;
@@ -1040,7 +1048,7 @@ void CustomLcdDisplay::EPD_DisplayPartRect(int x, int y, int w, int h) {
             line[relative_x / 4] |=
                 (uint8_t)(transition << (6 - (relative_x & 3) * 2));
         }
-        writeBytes(line.data(), output_stride);
+        writeBytes(line, output_stride);
     }
 
     EPD_TurnOnDisplayPart();

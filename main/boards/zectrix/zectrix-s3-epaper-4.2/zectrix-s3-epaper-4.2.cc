@@ -147,20 +147,31 @@ private:
         }
     }
 
+    // 关机流程放到独立任务执行：按钮/PowerSaveTimer 的回调都在 esp_timer 任务里，
+    // 在里面 vTaskDelay 会阻塞所有 esp_timer 回调（含省电定时器自身）。
+    static void ShutdownTask(void* arg) {
+        CustomBoard* self = static_cast<CustomBoard*>(arg);
+        for (int i = 0; i < 200 && self->display_ != nullptr && self->display_->IsRefreshPending(); i++) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP_LOGI(TAG, "Shutdown: cutting power");
+        self->power_->PowerAudioOff();
+        self->power_->VbatPowerOff();
+        // 注意：不调用 PowerEpdOff()，墨水屏断电可能丢失画面
+        vTaskDelete(nullptr);
+    }
+
     void Shutdown() {
         if (powered_off_) return;
         powered_off_ = true;
         ESP_LOGI(TAG, "Shutdown: showing sleep image");
         ShowSleepImage();
-        // 等墨水屏真正刷完再断电（断电后图像保留，看起来就是"关机画面"）
-        for (int i = 0; i < 200 && display_->IsRefreshPending(); i++) {
-            vTaskDelay(pdMS_TO_TICKS(50));
+        if (xTaskCreate(ShutdownTask, "shutdown", 3072, this, 5, nullptr) != pdPASS) {
+            ESP_LOGE(TAG, "Shutdown: failed to create task, cutting power directly");
+            power_->PowerAudioOff();
+            power_->VbatPowerOff();
         }
-        vTaskDelay(pdMS_TO_TICKS(1500));
-        ESP_LOGI(TAG, "Shutdown: cutting power");
-        power_->PowerAudioOff();
-        power_->VbatPowerOff();
-        // 注意：不调用 PowerEpdOff()，墨水屏断电可能丢失画面
     }
 
     void PowerOn() {
@@ -228,10 +239,12 @@ private:
     void InitializePowerSaveTimer() {
         power_save_timer_ = new PowerSaveTimer(-1, 180, 900);
         power_save_timer_->OnEnterSleepMode([this]() {
+            if (powered_off_) return;   // 已关机，无需再处理
             ESP_LOGI(TAG, "Entering sleep mode");
             ShowSleepImage();
         });
         power_save_timer_->OnExitSleepMode([this]() {
+            if (powered_off_) return;   // 关机状态下外设已断电，不要刷新/解冻
             ESP_LOGI(TAG, "Exiting sleep mode");
             display_->SetFrozen(false);   // 解冻 LVGL
             GetDisplay()->SetEmotion("neutral");
