@@ -886,12 +886,12 @@ elseif(CONFIG_BOARD_TYPE_LCDWIKI_ES3C35P)
 elseif(CONFIG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2)
     set(BOARD_TYPE "zectrix-s3-epaper-4.2")
     set(MANUFACTURER "zectrix")
-    # 18px 1bpp 中文字体（5985 常用字，不依赖 glyph push）+ 14px 图标
-    set(BUILTIN_TEXT_FONT font_noto_sans_basic_18_1)
+    # 24px 1bpp 中文像素字体（Ark Pixel 12px 设计尺寸 x2，整数倍放大后像素精确）
+    set(BUILTIN_TEXT_FONT font_ark_pixel_24_1)
     set(BUILTIN_ICON_FONT font_material_symbols_14_1)
     # 项目自带的单色 emoji（1bpp 线条），墨水屏二值化后仍然完整
     set(BUILTIN_EMOJI_FONT font_noto_emoji_96_1)
-    list(APPEND SOURCES "fonts/font_noto_sans_basic_18_1.c")
+    list(APPEND SOURCES "fonts/font_ark_pixel_24_1.c")
     list(APPEND SOURCES "fonts/font_noto_emoji_96_1.c")
     # 自定义休眠/关机图目录（用户可放 sleep.raw）
     set(DEFAULT_ASSETS_EXTRA_FILES "${CMAKE_CURRENT_SOURCE_DIR}/boards/zectrix/zectrix-s3-epaper-4.2/assets_extra")
@@ -1111,7 +1111,9 @@ idf_component_register(SRCS ${SOURCES}
 if(NOT BOARD_NAME)
     set(BOARD_NAME ${BOARD_TYPE})
 endif()
-string(REGEX MATCH "^font_noto_sans_basic_([0-9]+)_([0-9]+)$" _font_match "${BUILTIN_TEXT_FONT}")
+# Accept any "font_<family>_<size>_<bpp>" name so boards can ship their own
+# font families (e.g. font_ark_pixel_24_1) next to font_noto_sans_basic_18_1.
+string(REGEX MATCH "^font_[a-z0-9_]+_([0-9]+)_([0-9]+)$" _font_match "${BUILTIN_TEXT_FONT}")
 if(NOT _font_match)
     message(FATAL_ERROR "Unsupported built-in text font name: ${BUILTIN_TEXT_FONT}")
 endif()
