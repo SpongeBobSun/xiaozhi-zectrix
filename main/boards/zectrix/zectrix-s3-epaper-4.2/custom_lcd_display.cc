@@ -687,16 +687,18 @@ void CustomLcdDisplay::spi_port_rx_init() {
 
 void CustomLcdDisplay::read_busy() {
     int busy = lcd_spi_data.busy;
-    // 必须带超时：EPD 断电或 SPI 异常时 busy 可能长期为低，死等会永久卡死刷新任务
-    constexpr int kMaxWaitMs = 5000;
-    int waited_ms = 0;
+    // 用 tick 计数做超时：pdMS_TO_TICKS(5) 在 100Hz tick 下等于 0，vTaskDelay(0) 不延时，
+    // 会导致"超时"瞬间触发。
+    const TickType_t start = xTaskGetTickCount();
+    const TickType_t max_wait = pdMS_TO_TICKS(3000);
     while (gpio_get_level((gpio_num_t)busy) == 0) {
-        if (waited_ms >= kMaxWaitMs) {
-            ESP_LOGW(TAG, "EPD busy timeout after %d ms", kMaxWaitMs);
+        if ((xTaskGetTickCount() - start) > max_wait) {
+            ESP_LOGW(TAG, "EPD busy timeout (GPIO%d still low, pwr=%d vbat=%d rst=%d)",
+                     busy, gpio_get_level((gpio_num_t)lcd_spi_data.power),
+                     gpio_get_level(GPIO_NUM_17), gpio_get_level((gpio_num_t)lcd_spi_data.rst));
             return;
         }
-        vTaskDelay(pdMS_TO_TICKS(5));
-        waited_ms += 5;
+        vTaskDelay(1);
     }
 }
 
@@ -799,6 +801,16 @@ void CustomLcdDisplay::EPD_PowerOff() {
 
 void CustomLcdDisplay::EPD_Init() {
     EPD_PowerOn();
+    // 若 EPD 卡在忙状态（例如关机时刷新未完成），断电再上电强制复位
+    if (gpio_get_level((gpio_num_t)lcd_spi_data.busy) == 0) {
+        ESP_LOGW(TAG, "EPD busy at init, power-cycling panel");
+        gpio_hold_dis((gpio_num_t)lcd_spi_data.power);
+        gpio_set_level((gpio_num_t)lcd_spi_data.power, 0);
+        vTaskDelay(pdMS_TO_TICKS(200));
+        gpio_set_level((gpio_num_t)lcd_spi_data.power, 1);
+        gpio_hold_en((gpio_num_t)lcd_spi_data.power);
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
     vTaskDelay(pdMS_TO_TICKS(10));
     set_rst_1();
     vTaskDelay(pdMS_TO_TICKS(10));
