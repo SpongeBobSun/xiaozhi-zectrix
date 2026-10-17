@@ -6,7 +6,8 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <esp_sleep.h>
-#include <driver/rtc_io.h>
+#include <esp_lvgl_port.h>
+#include <wifi_manager.h>
 
 #include "application.h"
 #include "button.h"
@@ -147,33 +148,46 @@ private:
         }
     }
 
-    // 关机：关掉耗电外设后进入 deep sleep，圆键(GPIO0)按下唤醒。
-    // 注意不能再用 VbatPowerOff()：VBAT 是主控自己的电池供电开关，
-    // 拔掉 USB 后切断 VBAT 会让整机掉电，圆键再也无法开机。
-    void EnterDeepSleep() {
+    // 关机：显示休眠图后进入 light sleep，圆键(GPIO0)按下唤醒。
+    // 用 light sleep 而不是 deep sleep：deep sleep 唤醒会重走 ROM bootloader，
+    // 而 GPIO0 正是下载模式 strapping 脚，长按圆键会被误判成下载模式；
+    // light sleep 唤醒不经过 bootloader，长按/短按都不会进下载模式。
+    // 注意不能用 VbatPowerOff()：VBAT 是主控自己的电池供电开关，切断后
+    // 纯电池状态下整机掉电，圆键再也无法开机。
+    void EnterLightSleep() {
+        ESP_LOGI(TAG, "Shutdown: stopping audio/wifi/lvgl before light sleep");
         power_->PowerAudioOff();
-        // deep sleep 期间保持 VBAT / 墨水屏电源 / EPD 复位脚：
-        //  - VBAT 掉电 → 主控断电，圆键无法唤醒
-        //  - EPD 掉电或复位 → 休眠画面消失
-        rtc_gpio_init(VBAT_PWR_PIN);
-        rtc_gpio_set_direction(VBAT_PWR_PIN, RTC_GPIO_MODE_OUTPUT_ONLY);
-        rtc_gpio_set_level(VBAT_PWR_PIN, 1);
-        rtc_gpio_hold_en(VBAT_PWR_PIN);
+        // 停 WiFi 与 LVGL tick：避免它们阻止进入 light sleep 或周期唤醒
+        WifiManager::GetInstance().StopStation();
+        WifiManager::GetInstance().StopConfigAp();
+        vTaskDelay(pdMS_TO_TICKS(200));   // 让断网事件处理完再停 LVGL
+        lvgl_port_stop();
 
-        rtc_gpio_init(EPD_PWR_PIN);
-        rtc_gpio_set_direction(EPD_PWR_PIN, RTC_GPIO_MODE_OUTPUT_ONLY);
-        rtc_gpio_set_level(EPD_PWR_PIN, 1);
-        rtc_gpio_hold_en(EPD_PWR_PIN);
+        // 长按关机时用户可能还按着圆键，先等松开，否则 ext0 会立刻唤醒
+        while (gpio_get_level(GPIO_NUM_0) == 0) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
 
-        rtc_gpio_init(EPD_RST_PIN);
-        rtc_gpio_set_direction(EPD_RST_PIN, RTC_GPIO_MODE_OUTPUT_ONLY);
-        rtc_gpio_set_level(EPD_RST_PIN, 1);
-        rtc_gpio_hold_en(EPD_RST_PIN);
-
-        // 圆键(GPIO0)按下为低电平，唤醒设备（唤醒即复位重启）
+        // 清空所有唤醒源，只保留圆键(GPIO0)低电平唤醒
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
         esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
-        ESP_LOGI(TAG, "Shutdown: entering deep sleep (wake on BOOT button)");
-        esp_deep_sleep_start();
+
+        ESP_LOGI(TAG, "Shutdown: entering light sleep (wake on BOOT button)");
+        esp_light_sleep_start();
+
+        // 圆键唤醒。等松开再重启：软复位时 bootloader 仍会采样 GPIO0，
+        // 若此时还按着就会被当成下载模式。
+        ESP_LOGI(TAG, "Woken from light sleep, waiting for BOOT release");
+        while (gpio_get_level(GPIO_NUM_0) == 0) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+
+        ESP_LOGI(TAG, "Powering on (restart)");
+        power_->VbatPowerOn();
+        power_->PowerAudioOn();
+        power_->PowerEpdOn();
+        vTaskDelay(pdMS_TO_TICKS(100));
+        esp_restart();
     }
 
     // 关机流程放到独立任务执行：按钮/PowerSaveTimer 的回调都在 esp_timer 任务里，
@@ -184,7 +198,7 @@ private:
             vTaskDelay(pdMS_TO_TICKS(50));
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
-        self->EnterDeepSleep();
+        self->EnterLightSleep();
     }
 
     void Shutdown() {
@@ -193,8 +207,8 @@ private:
         ESP_LOGI(TAG, "Shutdown: showing sleep image");
         ShowSleepImage();
         if (xTaskCreate(ShutdownTask, "shutdown", 3072, this, 5, nullptr) != pdPASS) {
-            ESP_LOGE(TAG, "Shutdown: failed to create task, entering deep sleep directly");
-            EnterDeepSleep();
+            ESP_LOGE(TAG, "Shutdown: failed to create task, sleeping in place");
+            EnterLightSleep();
         }
     }
 
