@@ -341,11 +341,8 @@ void CustomLcdDisplay::SetupUI() {
     if (emoji_box_ != nullptr) {
         lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, -60);   // 表情上移，给文字让空间
     }
-    if (emoji_label_ != nullptr) {
-        // 板卡用的是 30px 1bpp 单色 emoji（项目自带、无版权问题），
-        // 显示时放大 2 倍，墨水屏上更醒目
-        lv_obj_set_style_transform_scale(emoji_label_, 512, 0);
-    }
+    // 表情字体是 96px 的 Noto Emoji（单色线条，OFL 许可），由 BUILTIN_EMOJI_FONT
+    // 指定，尺寸原生就是大的，不需要再做缩放。
     if (bottom_bar_ != nullptr) {
         // 文字区至少占下半屏 45%，单行时上对齐、长文本继续向下/向上扩展而不被裁切
         lv_obj_set_style_min_height(bottom_bar_, LV_VER_RES * 45 / 100, 0);

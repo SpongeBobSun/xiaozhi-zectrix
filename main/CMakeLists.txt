@@ -890,8 +890,9 @@ elseif(CONFIG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2)
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_18_1)
     set(BUILTIN_ICON_FONT font_material_symbols_14_1)
     # 项目自带的单色 emoji（1bpp 线条），墨水屏二值化后仍然完整
-    set(BUILTIN_EMOJI_FONT font_noto_emoji_30_1)
+    set(BUILTIN_EMOJI_FONT font_noto_emoji_96_1)
     list(APPEND SOURCES "fonts/font_noto_sans_basic_18_1.c")
+    list(APPEND SOURCES "fonts/font_noto_emoji_96_1.c")
     # 自定义休眠/关机图目录（用户可放 sleep.raw）
     set(DEFAULT_ASSETS_EXTRA_FILES "${CMAKE_CURRENT_SOURCE_DIR}/boards/zectrix/zectrix-s3-epaper-4.2/assets_extra")
 endif()
