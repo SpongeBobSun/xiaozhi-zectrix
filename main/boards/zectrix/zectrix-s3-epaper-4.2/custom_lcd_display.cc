@@ -16,7 +16,6 @@
 #include "sleep_manager.h"
 
 LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
-LV_FONT_DECLARE(font_noto_emoji_96_1);
 LV_FONT_DECLARE(font_puhui_basic_30_4);
 
 #define TAG "CustomLcdDisplay"
@@ -331,12 +330,6 @@ void CustomLcdDisplay::ForceFullRedraw() {
 void CustomLcdDisplay::SetEmotion(const char* emotion) {
     // 不做强制全刷：情绪在对话中频繁变化，全刷会导致屏幕频繁闪烁
     LcdDisplay::SetEmotion(emotion);
-    // 基类用组件的 30px 4bpp 抗锯齿 emoji，墨水屏上是灰糊的；这里换成本板卡的
-    // 96px 1bpp 线条 emoji（纯黑白、大而完整）。仅影响 zectrix 板卡。
-    if (emoji_label_ != nullptr && Lock(500)) {
-        lv_obj_set_style_text_font(emoji_label_, &font_noto_emoji_96_1, 0);
-        Unlock();
-    }
 }
 
 void CustomLcdDisplay::SetupUI() {
@@ -346,7 +339,12 @@ void CustomLcdDisplay::SetupUI() {
         return;
     }
     if (emoji_box_ != nullptr) {
-        lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, -70);   // 表情上移，给文字让空间
+        lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, -60);   // 表情上移，给文字让空间
+    }
+    if (emoji_label_ != nullptr) {
+        // 板卡用的是 30px 1bpp 单色 emoji（项目自带、无版权问题），
+        // 显示时放大 2 倍，墨水屏上更醒目
+        lv_obj_set_style_transform_scale(emoji_label_, 512, 0);
     }
     if (bottom_bar_ != nullptr) {
         // 文字区至少占下半屏 45%，单行时上对齐、长文本继续向下/向上扩展而不被裁切
