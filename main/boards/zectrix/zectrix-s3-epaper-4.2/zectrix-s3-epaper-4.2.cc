@@ -5,6 +5,9 @@
 #include <esp_timer.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
+#include <esp_sleep.h>
+#include <esp_lvgl_port.h>
+#include <wifi_manager.h>
 
 #include "application.h"
 #include "button.h"
@@ -145,6 +148,48 @@ private:
         }
     }
 
+    // 关机：显示休眠图后进入 light sleep，圆键(GPIO0)按下唤醒。
+    // 用 light sleep 而不是 deep sleep：deep sleep 唤醒会重走 ROM bootloader，
+    // 而 GPIO0 正是下载模式 strapping 脚，长按圆键会被误判成下载模式；
+    // light sleep 唤醒不经过 bootloader，长按/短按都不会进下载模式。
+    // 注意不能用 VbatPowerOff()：VBAT 是主控自己的电池供电开关，切断后
+    // 纯电池状态下整机掉电，圆键再也无法开机。
+    void EnterLightSleep() {
+        ESP_LOGI(TAG, "Shutdown: stopping audio/wifi/lvgl before light sleep");
+        power_->PowerAudioOff();
+        // 停 WiFi 与 LVGL tick：避免它们阻止进入 light sleep 或周期唤醒
+        WifiManager::GetInstance().StopStation();
+        WifiManager::GetInstance().StopConfigAp();
+        vTaskDelay(pdMS_TO_TICKS(200));   // 让断网事件处理完再停 LVGL
+        lvgl_port_stop();
+
+        // 长按关机时用户可能还按着圆键，先等松开，否则 ext0 会立刻唤醒
+        while (gpio_get_level(GPIO_NUM_0) == 0) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+
+        // 清空所有唤醒源，只保留圆键(GPIO0)低电平唤醒
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+
+        ESP_LOGI(TAG, "Shutdown: entering light sleep (wake on BOOT button)");
+        esp_light_sleep_start();
+
+        // 圆键唤醒。等松开再重启：软复位时 bootloader 仍会采样 GPIO0，
+        // 若此时还按着就会被当成下载模式。
+        ESP_LOGI(TAG, "Woken from light sleep, waiting for BOOT release");
+        while (gpio_get_level(GPIO_NUM_0) == 0) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+
+        ESP_LOGI(TAG, "Powering on (restart)");
+        power_->VbatPowerOn();
+        power_->PowerAudioOn();
+        power_->PowerEpdOn();
+        vTaskDelay(pdMS_TO_TICKS(100));
+        esp_restart();
+    }
+
     // 关机流程放到独立任务执行：按钮/PowerSaveTimer 的回调都在 esp_timer 任务里，
     // 在里面 vTaskDelay 会阻塞所有 esp_timer 回调（含省电定时器自身）。
     static void ShutdownTask(void* arg) {
@@ -153,11 +198,7 @@ private:
             vTaskDelay(pdMS_TO_TICKS(50));
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
-        ESP_LOGI(TAG, "Shutdown: cutting power");
-        self->power_->PowerAudioOff();
-        self->power_->VbatPowerOff();
-        // 注意：不调用 PowerEpdOff()，墨水屏断电可能丢失画面
-        vTaskDelete(nullptr);
+        self->EnterLightSleep();
     }
 
     void Shutdown() {
@@ -166,9 +207,8 @@ private:
         ESP_LOGI(TAG, "Shutdown: showing sleep image");
         ShowSleepImage();
         if (xTaskCreate(ShutdownTask, "shutdown", 3072, this, 5, nullptr) != pdPASS) {
-            ESP_LOGE(TAG, "Shutdown: failed to create task, cutting power directly");
-            power_->PowerAudioOff();
-            power_->VbatPowerOff();
+            ESP_LOGE(TAG, "Shutdown: failed to create task, sleeping in place");
+            EnterLightSleep();
         }
     }
 
@@ -454,6 +494,12 @@ public:
         : boot_button_(BOOT_BUTTON_GPIO),
           up_button_(TODO_UP_BUTTON_GPIO),
           down_button_(TODO_DOWN_BUTTON_GPIO) {
+        // deep sleep 唤醒后电源 GPIO 可能仍处于 hold 状态，先解除以便重新配置
+        gpio_hold_dis(EPD_PWR_PIN);
+        gpio_hold_dis(EPD_RST_PIN);
+        gpio_hold_dis(VBAT_PWR_PIN);
+        gpio_hold_dis(Audio_PWR_PIN);
+        gpio_hold_dis(Audio_AMP_PIN);
         // 在最早期检测双按钮切换OTA分区
         CheckDualButtonForOtaSwitch();
         
